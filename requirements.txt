@@ -1,0 +1,2 @@
+# v1 currently uses Python standard library only.
+# External runtime dependency: ffmpeg / ffprobe must be installed separately.

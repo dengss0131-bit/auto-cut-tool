@@ -1,0 +1,32 @@
+# Runtime outputs
+uploads/
+previews/
+outputs/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+env/
+
+# Logs
+*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Large media files accidentally placed in repo
+*.mp4
+*.mov
+*.mkv
+*.avi
+*.m4v
+*.wav
+*.mp3
