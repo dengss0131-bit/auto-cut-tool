@@ -59,6 +59,7 @@
           导出文件名
           <input id="exportName" placeholder="例如：talk_final.mp4" />
         </label>
+        <button id="speechBtn" class="ghost" disabled>分析口播瑕疵</button>
         <button id="exportBtn" class="secondary" disabled>确认并导出</button>
       </div>
       <div id="cutListBox" class="cut-list-box hidden">
@@ -67,6 +68,16 @@
           <span id="cutListCount"></span>
         </div>
         <div id="cutList" class="cut-list"></div>
+      </div>
+      <div id="speechBox" class="speech-box hidden">
+        <div class="cut-list-head">
+          <h3>疑似口播瑕疵</h3>
+          <span id="fillerCount"></span>
+        </div>
+        <div id="fillerList" class="cut-list"></div>
+        <h3 class="transcript-title">全文转写</h3>
+        <div id="transcriptList" class="transcript-list"></div>
+        <div id="srtPath" class="srt-path"></div>
       </div>
       <pre id="result">这里会显示预览文件、节省时长和剪辑报告。确认满意后再导出最终视频。</pre>
     </section>
@@ -120,6 +131,8 @@
   button:hover { background: var(--brand-dark); }
   button.secondary { background: #172033; box-shadow: 0 12px 28px rgba(23,32,51,.16); }
   button.secondary:hover { background: #344054; }
+  button.ghost { background: #eef2ff; color: var(--brand); box-shadow: none; }
+  button.ghost:hover { background: #dfe6ff; }
   button:disabled { opacity: .65; cursor: not-allowed; }
   .hint { color: var(--muted); line-height: 1.7; font-size: 14px; }
   .file-info { margin-top: 10px; padding: 12px 14px; border-radius: 12px; background: #f8fafc; border: 1px dashed #d0d5dd; color: var(--muted); font-size: 14px; }
@@ -141,6 +154,13 @@
   .cut-sub { margin-top: 4px; color: var(--muted); font-size: 13px; }
   .cut-jump { width: auto; margin: 0; padding: 8px 10px; border-radius: 10px; font-size: 13px; box-shadow: none; background: #eef2ff; color: var(--brand); }
   .cut-jump:hover { background: #dfe6ff; }
+  .speech-box { margin: 0 0 16px; padding: 14px; background: #fff; border: 1px solid var(--line); border-radius: 16px; }
+  .transcript-title { margin: 18px 0 10px; font-size: 18px; }
+  .transcript-list { max-height: 320px; overflow: auto; display: grid; gap: 8px; }
+  .transcript-row { padding: 10px 12px; border: 1px solid #edf0f5; border-radius: 12px; background: #f8fafc; }
+  .transcript-time { color: var(--brand); font-size: 13px; font-weight: 800; margin-bottom: 5px; }
+  .transcript-text { color: var(--text); line-height: 1.6; }
+  .srt-path { margin-top: 12px; padding: 10px 12px; border-radius: 12px; background: #ecfdf3; color: #027a48; word-break: break-all; font-weight: 700; }
   .hidden { display: none; }
   .idle { background: #f2f4f7; color: #475467; }
   .running { background: #eff4ff; color: #3457ff; }
@@ -164,10 +184,16 @@
   const previewBox = $("previewBox");
   const previewVideo = $("previewVideo");
   const exportName = $("exportName");
+  const speechBtn = $("speechBtn");
   const exportBtn = $("exportBtn");
   const cutListBox = $("cutListBox");
   const cutList = $("cutList");
   const cutListCount = $("cutListCount");
+  const speechBox = $("speechBox");
+  const fillerList = $("fillerList");
+  const fillerCount = $("fillerCount");
+  const transcriptList = $("transcriptList");
+  const srtPath = $("srtPath");
   let currentPreviewFile = null;
 
   function setStatus(text, cls) {
@@ -217,7 +243,35 @@
     cutListBox.classList.remove("hidden");
   }
 
+  function renderSpeechResult(result) {
+    const fillers = result.fillers || [];
+    const segments = result.segments || [];
+    fillerCount.textContent = fillers.length + " 条";
+    fillerList.innerHTML = fillers.length ? fillers.map((item, index) => {
+      return '<div class="cut-row">'
+        + '<div><div class="cut-main">#' + (index + 1) + ' ' + fmtTime(item.start) + ' “' + item.text + '”</div>'
+        + '<div class="cut-sub">来源：' + (item.source_text || '') + '</div></div>'
+        + '<button class="cut-jump" data-time="' + Math.max(0, item.start - 2).toFixed(3) + '">播放附近</button>'
+        + '</div>';
+    }).join("") : '<div class="cut-row"><div><div class="cut-main">没有检测到明显填充词</div><div class="cut-sub">可以继续人工检查全文转写。</div></div></div>';
+
+    transcriptList.innerHTML = segments.length ? segments.map((seg) => {
+      return '<div class="transcript-row"><div class="transcript-time">' + fmtTime(seg.start) + ' - ' + fmtTime(seg.end) + '</div>'
+        + '<div class="transcript-text">' + seg.text + '</div></div>';
+    }).join("") : '<div class="transcript-row"><div class="transcript-text">没有生成转写内容。</div></div>';
+
+    srtPath.textContent = result.srt ? '字幕文件：' + result.srt : '未生成字幕文件';
+    speechBox.classList.remove("hidden");
+  }
+
   cutList.addEventListener("click", (event) => {
+    const btn = event.target.closest(".cut-jump");
+    if (!btn) return;
+    previewVideo.currentTime = Number(btn.dataset.time || 0);
+    previewVideo.play().catch(() => {});
+  });
+
+  fillerList.addEventListener("click", (event) => {
     const btn = event.target.closest(".cut-jump");
     if (!btn) return;
     previewVideo.currentTime = Number(btn.dataset.time || 0);
@@ -243,10 +297,12 @@
     }
 
     runBtn.disabled = true;
+    speechBtn.disabled = true;
     exportBtn.disabled = true;
     currentPreviewFile = null;
     summaryBox.classList.add("hidden");
     cutListBox.classList.add("hidden");
+    speechBox.classList.add("hidden");
     previewBox.classList.add("hidden");
     previewVideo.removeAttribute("src");
     setStatus("正在生成剪后预览，请稍等", "running");
@@ -280,6 +336,7 @@
       renderSummary(r);
       renderCutList(r);
       previewBox.classList.remove("hidden");
+      speechBtn.disabled = false;
       exportBtn.disabled = false;
       runBtn.textContent = "重新生成预览";
       setStatus("预览已生成，确认满意后再导出", "ok");
@@ -303,6 +360,37 @@
         : message;
     } finally {
       runBtn.disabled = false;
+    }
+  });
+
+  speechBtn.addEventListener("click", async () => {
+    if (!currentPreviewFile) {
+      setStatus("缺少预览视频", "err");
+      resultEl.textContent = "请先生成剪后预览，再分析口播瑕疵。";
+      return;
+    }
+    speechBtn.disabled = true;
+    setStatus("正在分析口播瑕疵", "running");
+    resultEl.textContent = resultEl.textContent + "\n\n正在调用语音识别，首次运行可能需要下载模型，请稍等。";
+    try {
+      const res = await fetch("/api/analyze-speech", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          preview_file: currentPreviewFile,
+          model: "base"
+        })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || "分析失败");
+      renderSpeechResult(data.result);
+      setStatus("口播瑕疵分析完成", "ok");
+      resultEl.textContent = resultEl.textContent + "\n\n口播瑕疵：" + (data.result.fillers || []).length + " 条\n字幕文件：" + data.result.srt;
+    } catch (err) {
+      setStatus("口播分析失败", "err");
+      resultEl.textContent = String(err.message || err);
+    } finally {
+      speechBtn.disabled = false;
     }
   });
 

@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 import mimetypes
 
 from autocut import autocut, MODES
+from transcribe import transcribe_video
 
 ROOT = Path(__file__).resolve().parent.parent
 WEB = ROOT / "app" / "web"
@@ -102,6 +103,9 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/api/export":
             self.handle_export()
             return
+        if parsed.path == "/api/analyze-speech":
+            self.handle_analyze_speech()
+            return
         if parsed.path != "/api/autocut":
             self._send(404, body=json.dumps({"error": "not found"}, ensure_ascii=False).encode("utf-8"))
             return
@@ -164,6 +168,29 @@ class Handler(BaseHTTPRequestHandler):
             report["preview_url"] = f"/preview/{preview_output.name}"
             report["export_suggested_name"] = f"{source.stem}_final_{mode}.mp4"
             self._send(200, body=json.dumps({"ok": True, "report": report}, ensure_ascii=False, indent=2).encode("utf-8"))
+        except Exception as exc:
+            payload = {
+                "ok": False,
+                "error": str(exc),
+                "trace": traceback.format_exc(limit=3),
+            }
+            status = 400 if isinstance(exc, ValueError) else 500
+            self._send(status, body=json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8"))
+
+    def handle_analyze_speech(self):
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            data = json.loads(self.rfile.read(length).decode("utf-8"))
+            preview_file = Path(data.get("preview_file", "")).resolve()
+            try:
+                preview_file.relative_to(PREVIEWS.resolve())
+            except ValueError:
+                raise ValueError("预览文件路径不合法")
+            if not preview_file.exists():
+                raise ValueError("预览视频不存在，请先生成剪后预览")
+            model_size = str(data.get("model", "base") or "base")
+            result = transcribe_video(str(preview_file), str(OUTPUTS), model_size=model_size)
+            self._send(200, body=json.dumps({"ok": True, "result": result}, ensure_ascii=False, indent=2).encode("utf-8"))
         except Exception as exc:
             payload = {
                 "ok": False,

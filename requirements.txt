@@ -1,2 +1,5 @@
-# v1 currently uses Python standard library only.
+# Core v1 functions use Python standard library only.
 # External runtime dependency: ffmpeg / ffprobe must be installed separately.
+
+# Optional v1.1 speech analysis dependency:
+faster-whisper>=1.0.0
